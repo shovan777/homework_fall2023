@@ -18,7 +18,8 @@ class ReplayBuffer(object):
         self.terminals = None
 
     def __len__(self):
-        if self.obs:
+        # if self.obs: # this caused ambiguity error
+        if self.obs.any():
             return self.obs.shape[0]
         else:
             return 0
