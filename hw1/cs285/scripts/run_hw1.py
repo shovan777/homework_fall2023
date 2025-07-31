@@ -68,6 +68,7 @@ def run_training_loop(params):
     # Maximum length for episodes
     params['ep_len'] = params['ep_len'] or env.spec.max_episode_steps
     MAX_VIDEO_LEN = params['ep_len']
+    print(f"Using episode length: {params['ep_len']}")
 
     assert isinstance(env.action_space, gym.spaces.Box), "Environment must be continuous"
     # Observation and action sizes
@@ -132,7 +133,8 @@ def run_training_loop(params):
             # TODO: collect `params['batch_size']` transitions
             # HINT: use utils.sample_trajectories
             # TODO: implement missing parts of utils.sample_trajectory
-            paths, envsteps_this_batch = TODO
+            paths, envsteps_this_batch = utils.sample_trajectories(
+                env, actor, params['batch_size'], params['ep_len'], render=True)
 
             # relabel the collected obs with actions from a provided expert policy
             if params['do_dagger']:
@@ -141,7 +143,8 @@ def run_training_loop(params):
                 # TODO: relabel collected obsevations (from our policy) with labels from expert policy
                 # HINT: query the policy (using the get_action function) with paths[i]["observation"]
                 # and replace paths[i]["action"] with these expert labels
-                paths = TODO
+                for i in range(len(paths)):
+                    paths[i]["action"] = expert_policy.get_action(paths[i]["observation"])
 
         total_envsteps += envsteps_this_batch
         # add collected data to replay buffer
@@ -156,8 +159,9 @@ def run_training_loop(params):
           # HINT1: how much data = params['train_batch_size']
           # HINT2: use np.random.permutation to sample random indices
           # HINT3: return corresponding data points from each array (i.e., not different indices from each array)
-          # for imitation learning, we only need observations and actions.  
-          ob_batch, ac_batch = TODO
+          # for imitation learning, we only need observations and actions.
+          sample_indices = np.random.permutation(len(replay_buffer))[:params['train_batch_size']]
+          ob_batch, ac_batch = replay_buffer.obs[sample_indices], replay_buffer.acs[sample_indices]
 
           # use the sampled data to train an agent
           train_log = actor.update(ob_batch, ac_batch)
@@ -188,6 +192,14 @@ def run_training_loop(params):
             logs = utils.compute_metrics(paths, eval_paths)
             # compute additional metrics
             logs.update(training_logs[-1]) # Only use the last log for now
+            if not params['do_dagger']:
+                # lets plot the training losses here
+               import matplotlib.pyplot as plt
+               plt.plot(range(len(training_logs[1000:])), [log['Training Loss'] for log in training_logs[1000:]])
+               plt.xlabel('Training Steps')
+               plt.ylabel('Loss')
+               plt.title('Training Losses Over Time')
+               plt.show()
             logs["Train_EnvstepsSoFar"] = total_envsteps
             logs["TimeSinceStart"] = time.time() - start_time
             if itr == 0:
@@ -240,6 +252,9 @@ def main():
 
     # convert args to dictionary
     params = vars(args)
+    print('Experiment parameters:')
+    for key, value in params.items():
+        print(f'{key}: {value}')
 
     ##################################
     ### CREATE DIRECTORY FOR LOGGING

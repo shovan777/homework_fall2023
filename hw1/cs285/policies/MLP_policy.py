@@ -109,6 +109,7 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             itertools.chain([self.logstd], self.mean_net.parameters()),
             self.learning_rate
         )
+        self.criterion = nn.MSELoss()
 
     def save(self, filepath):
         """
@@ -129,7 +130,22 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         # through it. For example, you can return a torch.FloatTensor. You can also
         # return more flexible objects, such as a
         # `torch.distributions.Distribution` object. It's up to you!
-        raise NotImplementedError
+        # raise NotImplementedError
+        observation_tensor = ptu.from_numpy(observation)
+        # observation_tensor.requires_grad_(True)
+        mean = self.mean_net(observation_tensor)
+        # mean net outputs actual value of mean/exp of actions not log prob
+        # , so we need to exponentiate it
+        # to get the mean of the distribution
+        # mean = torch.exp(mean)
+        std = torch.exp(self.logstd)
+        # # create a normal distribution with the mean and std
+        dist = distributions.Normal(mean, std)
+        # # sample from the distribution of ac.dim dimensions
+        sampled_actions = dist.rsample()
+        # sampled_actions = mean
+        return sampled_actions
+
 
     def update(self, observations, actions):
         """
@@ -140,8 +156,18 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         :return:
             dict: 'Training Loss': supervised learning loss
         """
+        # print(self)
         # TODO: update the policy and return the loss
-        loss = TODO
+        # run the forward pass of the network
+        actions_tensor = ptu.from_numpy(actions)
+        self.optimizer.zero_grad()
+        predicted_actions = self.forward(observations)
+        # print(predicted_actions.shape, actions_tensor.shape)
+        # compute the loss between predicted actions and true actions
+        # we use mean squared error loss for supervised learning
+        loss = self.criterion(predicted_actions, actions_tensor)
+        loss.backward()
+        self.optimizer.step()
         return {
             # You can add extra logging information here, but keep this line
             'Training Loss': ptu.to_numpy(loss),
